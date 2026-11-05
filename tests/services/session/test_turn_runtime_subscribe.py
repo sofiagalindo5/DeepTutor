@@ -1192,3 +1192,111 @@ async def test_context_preparation_usage_is_included_in_durable_turn_total(
     stored = next(e for e in messages[-1]["events"] if e["type"] == "done")
     assert stored["metadata"]["usage_summary"] == done["metadata"]["usage_summary"]
     assert current_usage.get() is None
+
+
+@pytest.mark.asyncio
+async def test_selection_tutor_persists_parent_course_and_source_message(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    store = SQLiteSessionStore(tmp_path / "course-tutor.db")
+    runtime = TurnRuntimeManager(store)
+    course_service = CourseService(tmp_path / "courses")
+    course = course_service.create(name="Operating Systems")
+    parent = await store.ensure_session(None)
+    await store.update_session_preferences(parent["id"], {"course_id": course.id})
+    source_text = "Load code and static data into memory before execution."
+    source_message_id = await store.add_message(parent["id"], "assistant", source_text)
+
+    monkeypatch.setattr("deeptutor.services.courses.get_course_service", lambda: course_service)
+
+    async def _noop_run_turn(_execution):
+        return None
+
+    monkeypatch.setattr(runtime, "_run_turn", _noop_run_turn)
+
+    child, _ = await runtime.start_turn(
+        {
+            "type": "start_turn",
+            "session_id": None,
+            "capability": "chat",
+            "content": "Will memory explode?",
+            "tools": [],
+            "knowledge_bases": [],
+            "attachments": [],
+            "language": "en",
+            "config": {
+                "selection_tutor_context": {
+                    "selected_text": "Load code and static data into memory",
+                    "parent_session_id": parent["id"],
+                    "source_message_id": source_message_id,
+                    "source_message_text": "forged fallback",
+                }
+            },
+        }
+    )
+
+    persisted = await store.get_session(child["id"])
+    assert persisted is not None
+    assert persisted["preferences"]["course_id"] == course.id
+    assert persisted["preferences"]["parent_session_id"] == parent["id"]
+    assert persisted["preferences"]["session_kind"] == "selection_tutor"
+    assert persisted["preferences"]["source_message_id"] == source_message_id
+
+
+@pytest.mark.asyncio
+async def test_source_message_preference_requires_parent_owned_tutor_context(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    store = SQLiteSessionStore(tmp_path / "source-message-owner.db")
+    runtime = TurnRuntimeManager(store)
+    parent = await store.ensure_session(None)
+    other_session = await store.ensure_session(None)
+    source_text = "Load code and static data into memory before execution."
+    source_message_id = await store.add_message(other_session["id"], "assistant", source_text)
+    child = await store.ensure_session(None)
+
+    async def _noop_run_turn(_execution):
+        return None
+
+    monkeypatch.setattr(runtime, "_run_turn", _noop_run_turn)
+
+    payload = {
+        "type": "start_turn",
+        "session_id": child["id"],
+        "capability": "chat",
+        "content": "Will memory explode?",
+        "tools": [],
+        "knowledge_bases": [],
+        "attachments": [],
+        "language": "en",
+    }
+    with pytest.raises(RuntimeError, match="source message was not found"):
+        await runtime.start_turn(
+            {
+                **payload,
+                "config": {
+                    "selection_tutor_context": {
+                        "selected_text": "Load code and static data into memory",
+                        "parent_session_id": parent["id"],
+                        "source_message_id": source_message_id,
+                        "source_message_text": source_text,
+                    }
+                },
+            }
+        )
+
+    persisted_child = await store.get_session(child["id"])
+    assert persisted_child is not None
+    assert "source_message_id" not in persisted_child["preferences"]
+
+    normal_chat, _ = await runtime.start_turn(
+        {
+            **payload,
+            "session_id": None,
+            "content": "Hello",
+            "config": {},
+        }
+    )
+    persisted_chat = await store.get_session(normal_chat["id"])
+    assert persisted_chat is not None
+    assert "source_message_id" not in persisted_chat["preferences"]

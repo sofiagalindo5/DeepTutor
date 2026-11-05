@@ -25,6 +25,8 @@ vi.mock("next/dynamic", async () => {
       openMarkdownNoteTab: () => fixture.calls.push("markdown"),
       openQuizFollowupTab: () => fixture.calls.push("quiz"),
       openSelectionTutorTab: () => fixture.calls.push("selection"),
+      openSelectionTutorSessionTab: () =>
+        fixture.calls.push("selection-session"),
       openGeogebraTab: () => fixture.calls.push("geogebra"),
       openSubagentTab: () => fixture.calls.push("subagent"),
       focusActivityHome: () => fixture.calls.push("activity"),
@@ -80,6 +82,18 @@ it("replays viewer actions in order when the chunk loads", () => {
 
   act(() => {
     ref.current?.openWebTab("https://example.com");
+    ref.current?.openSelectionTutorSessionTab(
+      {
+        id: "thread",
+        session_id: "thread",
+        title: "Little Tutor",
+        created_at: 1,
+        updated_at: 1,
+        message_count: 1,
+        last_message: "Question",
+      },
+      "en",
+    );
     ref.current?.focusActivityHome();
   });
   expect(fixture.calls).toEqual([]);
@@ -87,7 +101,11 @@ it("replays viewer actions in order when the chunk loads", () => {
 
   fixture.ready = true;
   view.rerender(<LazySessionViewerPanel {...props} ref={ref} />);
-  expect(fixture.calls).toEqual(["https://example.com", "activity"]);
+  expect(fixture.calls).toEqual([
+    "https://example.com",
+    "selection-session",
+    "activity",
+  ]);
 });
 
 it("drops queued actions from the previous session", () => {

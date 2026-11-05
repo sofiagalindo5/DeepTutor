@@ -24,6 +24,7 @@ import {
   Copy,
   AlertCircle,
   Database,
+  GraduationCap,
   Loader2,
   MessageSquare,
   Pencil,
@@ -37,6 +38,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import type { SessionSummary } from "@/lib/session-api";
+import { formatRelativeTime } from "@/lib/relative-time";
 import type { SelectedHistorySession } from "@/components/chat/HistorySessionPicker";
 import type { SelectedQuestionEntry } from "@/components/chat/QuestionBankPicker";
 import { ActivityFold, FoldCaret } from "@/components/activity";
@@ -2001,10 +2004,119 @@ function ReadingPassageQuote({ quote, href }: { quote: string; href?: string }) 
   );
 }
 
+function LittleTutorThreadPopover({
+  threads,
+  onOpenThread,
+  onDeleteThread,
+}: {
+  threads: SessionSummary[];
+  onOpenThread?: (session: SessionSummary) => void;
+  onDeleteThread?: (session: SessionSummary) => Promise<boolean>;
+}) {
+  const { t, i18n } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (
+        rootRef.current &&
+        !rootRef.current.contains(event.target as Node)
+      ) {
+        setOpen(false);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div ref={rootRef} className="relative inline-block">
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        className="inline-flex items-center gap-1 rounded-full bg-[var(--muted)]/70 px-1.5 py-0.5 text-[10px] font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+      >
+        <GraduationCap size={10} strokeWidth={1.8} aria-hidden="true" />
+        {t("Little Tutor")} ×{threads.length}
+      </button>
+      {open && (
+        <div
+          role="dialog"
+          aria-label={t("Little Tutor")}
+          className="absolute left-0 top-full z-50 mt-1.5 w-[min(300px,calc(100vw-32px))] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--popover)] shadow-lg"
+        >
+          <div className="border-b border-[var(--border)]/60 px-3 py-2 text-[11px] font-semibold text-[var(--foreground)]">
+            {t("Little Tutor")}
+          </div>
+          <div className="max-h-64 overflow-y-auto p-1">
+            {threads.map((thread) => (
+              <div
+                key={thread.session_id}
+                className="flex items-start gap-1 rounded-lg transition-colors hover:bg-[var(--muted)]/70"
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false);
+                    onOpenThread?.(thread);
+                  }}
+                  className="flex min-w-0 flex-1 items-start gap-2 px-2.5 py-2 text-left"
+                >
+                  <span className="min-w-0 flex-1 truncate text-[12px] text-[var(--foreground)]">
+                    {thread.title?.trim() || thread.last_message?.trim() || t("Little Tutor")}
+                  </span>
+                  <span className="shrink-0 pt-0.5 text-[10px] text-[var(--muted-foreground)]">
+                    {formatRelativeTime(thread.updated_at, i18n.language)}
+                  </span>
+                </button>
+                {onDeleteThread && (
+                  <button
+                    type="button"
+                    aria-label={t("Delete")}
+                    disabled={deletingSessionId === thread.session_id}
+                    onClick={async () => {
+                      setDeletingSessionId(thread.session_id);
+                      try {
+                        if (await onDeleteThread(thread)) {
+                          if (threads.length === 1) setOpen(false);
+                        }
+                      } finally {
+                        setDeletingSessionId(null);
+                      }
+                    }}
+                    className="mr-1 mt-1.5 rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--destructive)]/10 hover:text-[var(--destructive)] disabled:opacity-50"
+                  >
+                    <Trash2 size={13} aria-hidden="true" />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export const ChatMessageList = memo(function ChatMessageList({
   messages,
   isStreaming,
   sessionId,
+  tutorThreadsBySourceMessage,
+  onOpenTutorThread,
+  onDeleteTutorThread,
   language,
   onCopyAssistantMessage,
   onRegenerateMessage,
@@ -2032,6 +2144,9 @@ export const ChatMessageList = memo(function ChatMessageList({
   messages: ChatMessageItem[];
   isStreaming: boolean;
   sessionId?: string | null;
+  tutorThreadsBySourceMessage?: ReadonlyMap<number, SessionSummary[]>;
+  onOpenTutorThread?: (session: SessionSummary) => void;
+  onDeleteTutorThread?: (session: SessionSummary) => Promise<boolean>;
   language?: string;
   onCopyAssistantMessage: CopyHandler;
   onRegenerateMessage: () => void;
@@ -2403,6 +2518,10 @@ export const ChatMessageList = memo(function ChatMessageList({
         const showDelete = deletableTurnUserId != null;
 
         const costSummary = msgDone ? messageUsage(msg.events) : null;
+        const tutorThreads =
+          msg.role !== "assistant" || msg.id === undefined
+            ? []
+            : tutorThreadsBySourceMessage?.get(msg.id) ?? [];
 
         return (
           <div
@@ -2527,6 +2646,15 @@ export const ChatMessageList = memo(function ChatMessageList({
                     <UsageFooter turn={costSummary} session={usageByRow.get(i) ?? costSummary} />
                   </div>
                 )}
+              </div>
+            )}
+            {tutorThreads.length > 0 && (
+              <div className="mt-2">
+                <LittleTutorThreadPopover
+                  threads={tutorThreads}
+                  onOpenThread={onOpenTutorThread}
+                  onDeleteThread={onDeleteTutorThread}
+                />
               </div>
             )}
           </div>

@@ -30,6 +30,7 @@ import { useTranslation } from "react-i18next";
 import { updateNotebookEntry } from "@/lib/notebook-api";
 import { shouldAppendEventContent } from "@/lib/stream";
 import { hasPendingAskUser } from "@/lib/ask-user-state";
+import { notifySessionsChanged } from "@/lib/session-events";
 import {
   SUBMIT_CONNECT_RETRY_INTERVAL_MS,
   SUBMIT_CONNECT_RETRY_LIMIT,
@@ -109,6 +110,8 @@ export interface QuizFollowupTabContext {
    * mount instead of starting a fresh thread.
    */
   followupSessionId: string | null;
+  /** Marks a persisted Little Tutor thread when its original selection context is unavailable. */
+  isSelectionTutor?: boolean;
   /** UI language ("zh" / "en") for the conversation. */
   language: string;
   /** Short label for the tab strip, e.g. "Q1 follow-up". */
@@ -296,6 +299,7 @@ export function QuizFollowupProvider({ children }: ProviderProps) {
         const nextSessionId = metadata.session_id || event.session_id || "";
         const nextTurnId = metadata.turn_id || event.turn_id || null;
         if (!nextSessionId) return;
+        notifySessionsChanged();
         updateThread(key, (prev) => ({
           ...prev,
           sessionId: nextSessionId,

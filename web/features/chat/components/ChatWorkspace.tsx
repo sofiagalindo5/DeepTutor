@@ -101,8 +101,14 @@ import { listCourses, type StudyCourse } from "@/lib/courses-api";
 import { consumePendingPrompt } from "@/lib/pending-prompt";
 import {
   fetchSessionAskHint,
+  listAllSessions,
+  deleteSession,
+  sessionWorkspaceId,
   updateSessionOrganization,
+  type SessionSummary,
 } from "@/lib/session-api";
+import { selectionTutorThreadsBySourceMessage } from "@/lib/selection-tutor-threads";
+import { subscribeSessionChanges } from "@/lib/session-events";
 import {
   DEFAULT_QUIZ_CONFIG,
   buildQuizWSConfig,
@@ -295,6 +301,41 @@ export default function ChatWorkspace() {
   } = useChatStateAdapter();
 
   const entrySessionId = useRef(state.sessionId);
+  const [selectionTutorSessions, setSelectionTutorSessions] = useState<
+    SessionSummary[]
+  >([]);
+  useEffect(() => {
+    const parentSessionId = state.sessionId;
+    if (!parentSessionId) return;
+
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const sessions = await listAllSessions({
+          force: true,
+          allWorkspaces: true,
+        });
+        if (!cancelled) setSelectionTutorSessions(sessions);
+      } catch (error) {
+        console.error("Failed to load tutor threads", error);
+      }
+    };
+
+    void refresh();
+    const unsubscribe = subscribeSessionChanges(() => void refresh());
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [state.sessionId]);
+  const tutorThreadsBySourceMessage = useMemo(
+    () =>
+      selectionTutorThreadsBySourceMessage(
+        selectionTutorSessions,
+        state.sessionId ?? "",
+      ),
+    [selectionTutorSessions, state.sessionId],
+  );
   const [replyLanguageSavingKey, setReplyLanguageSavingKey] = useState<string | null>(null);
   const replyLanguageSaveRef = useRef<{ key: string; pending: Promise<void> } | null>(null);
   const handleReplyLanguageChange = useCallback((value: string) => {
@@ -1746,6 +1787,42 @@ export default function ChatWorkspace() {
     window.getSelection()?.removeAllRanges();
   }, [selectionTutorPrompt, state.language, state.sessionId]);
 
+  const openSelectionTutorSession = useCallback(
+    (session: SessionSummary) => {
+      viewerPanelRef.current?.openSelectionTutorSessionTab(
+        session,
+        state.language,
+      );
+    },
+    [state.language],
+  );
+
+  const deleteSelectionTutorSession = useCallback(
+    async (session: SessionSummary) => {
+      if (
+        !window.confirm(
+          t("Permanently delete this chat and its tutor threads? This cannot be undone."),
+        )
+      ) {
+        return false;
+      }
+      try {
+        await deleteSession(session.session_id, sessionWorkspaceId(session));
+        setSelectionTutorSessions((current) =>
+          current.filter((item) => item.session_id !== session.session_id),
+        );
+        return true;
+      } catch (error) {
+        notify(
+          error instanceof Error ? error.message : t("Action failed"),
+          { tone: "error" },
+        );
+        return false;
+      }
+    },
+    [t],
+  );
+
   const handleMessagesCopy = useCallback(
     (event: React.ClipboardEvent<HTMLDivElement>) => {
       const selection = window.getSelection();
@@ -2570,6 +2647,9 @@ export default function ChatWorkspace() {
                         messages={state.messages}
                         isStreaming={state.isStreaming}
                         sessionId={state.sessionId}
+                        tutorThreadsBySourceMessage={tutorThreadsBySourceMessage}
+                        onOpenTutorThread={openSelectionTutorSession}
+                        onDeleteTutorThread={deleteSelectionTutorSession}
                         language={state.language}
                         onCopyAssistantMessage={copyAssistantMessage}
                         onRegenerateMessage={handleRegenerateMessage}

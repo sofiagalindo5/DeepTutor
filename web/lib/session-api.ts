@@ -119,6 +119,8 @@ export interface SessionPreferences {
   course_id?: string;
   /** Source conversation for nested selected-text tutor threads. */
   parent_session_id?: string;
+  /** Source message in the parent conversation for a selected-text tutor thread. */
+  source_message_id?: number;
   session_kind?: "chat" | "selection_tutor" | "immersive_reading";
   /** Owning Immersive Reading workspace, present only for reading sessions. */
   reading_workspace_id?: string;

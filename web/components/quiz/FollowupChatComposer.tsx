@@ -101,7 +101,9 @@ function FollowupChatComposerImpl({ context }: FollowupChatComposerProps) {
 
       const baseConfig = context.tutorSelection
         ? buildSelectionTutorConfig(context.tutorSelection)
-        : buildQuizFollowupConfig(
+        : context.isSelectionTutor
+          ? {}
+          : buildQuizFollowupConfig(
             context.question,
             context.userAnswer,
             context.isCorrect,
@@ -159,7 +161,9 @@ function FollowupChatComposerImpl({ context }: FollowupChatComposerProps) {
       onSubmit={handleSubmit}
       onCancelStreaming={handleCancelStreaming}
       inputPlaceholder={t(
-        "Ask anything about this question, your answer, or the AI judgment.",
+        context.isSelectionTutor
+          ? "Ask anything about the selected text."
+          : "Ask anything about this question, your answer, or the AI judgment.",
       )}
     />
   );
