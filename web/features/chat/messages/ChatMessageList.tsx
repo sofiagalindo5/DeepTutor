@@ -2419,6 +2419,10 @@ export const ChatMessageList = memo(function ChatMessageList({
         if (msg.role === "user") {
           const sib =
             msg.id !== undefined ? siblingsByMessageId.get(msg.id) : undefined;
+          const tutorThreads =
+            msg.id === undefined
+              ? []
+              : tutorThreadsBySourceMessage?.get(msg.id) ?? [];
           const reply = messageRows[rowIndex + 1]?.msg;
           const orphanedFailure =
             reply?.role === "assistant" && reply.parentMessageId === msg.id
@@ -2474,6 +2478,15 @@ export const ChatMessageList = memo(function ChatMessageList({
                   ) : null}
                 </div>
               ) : null}
+              {tutorThreads.length > 0 && (
+                <div className="mt-2 flex justify-end">
+                  <LittleTutorThreadPopover
+                    threads={tutorThreads}
+                    onOpenThread={onOpenTutorThread}
+                    onDeleteThread={onDeleteTutorThread}
+                  />
+                </div>
+              )}
             </div>
           );
         }
@@ -2519,7 +2532,7 @@ export const ChatMessageList = memo(function ChatMessageList({
 
         const costSummary = msgDone ? messageUsage(msg.events) : null;
         const tutorThreads =
-          msg.role !== "assistant" || msg.id === undefined
+          msg.id === undefined
             ? []
             : tutorThreadsBySourceMessage?.get(msg.id) ?? [];
 

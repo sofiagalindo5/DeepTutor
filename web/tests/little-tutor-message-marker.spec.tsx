@@ -116,6 +116,25 @@ describe("Little Tutor message marker", () => {
     expect(screen.getByText("Little Tutor ×1")).toBeVisible();
   });
 
+  it("shows a restored tutor thread under its source user message", () => {
+    const fetchedSessions = [tutorSession("thread", "Thread", 42)];
+    const reloadedGrouping = selectionTutorThreadsBySourceMessage(
+      fetchedSessions.map((session) => ({ ...session })),
+      "parent",
+    );
+    render(
+      <ChatMessageList
+        messages={[{ id: 42, role: "user", content: "Source question" }]}
+        isStreaming={false}
+        tutorThreadsBySourceMessage={reloadedGrouping}
+        onCopyAssistantMessage={async () => undefined}
+        onRegenerateMessage={() => undefined}
+      />,
+    );
+
+    expect(screen.getByText("Little Tutor ×1")).toBeVisible();
+  });
+
   it("deletes a thread and removes its marker when the last thread is gone", async () => {
     const thread: SessionSummary = {
       id: "thread-id",

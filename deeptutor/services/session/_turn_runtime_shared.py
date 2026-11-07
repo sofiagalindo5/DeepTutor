@@ -1179,6 +1179,8 @@ def _extract_selection_tutor_context(
         "selected_text": selected_text,
         "parent_session_id": str(raw.get("parent_session_id", "") or "").strip(),
     }
+
+    print("DEBUG raw from browser:", raw, flush=True)
     raw_source_message_id = raw.get("source_message_id")
     if isinstance(raw_source_message_id, int) and not isinstance(raw_source_message_id, bool):
         context["source_message_id"] = raw_source_message_id

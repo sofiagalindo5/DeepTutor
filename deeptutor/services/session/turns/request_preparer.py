@@ -690,6 +690,8 @@ class TurnRequestPreparer:
                         "course_id": str(parent_preferences.get("course_id") or ""),
                     }
                 )
+
+                print("DEBUG context at preparer:", selection_tutor_context, flush=True)
                 source_message_id = selection_tutor_context.get("source_message_id")
                 if isinstance(source_message_id, int) and source_message_id > 0:
                     preference_update["source_message_id"] = source_message_id
